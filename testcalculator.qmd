@@ -1,0 +1,230 @@
+---
+title: Icarus calculators
+format: html
+server: shiny
+---
+
+```{r}
+library(shiny)
+library(ggplot2)
+library(patchwork) # for 2x2 layout
+
+# ---------------- Constants (ICARUS) ----------------
+FRIDGE_P   <- 500      # J/s per refrigerator
+FREEZER_P  <- 2500     # J/s per freezer
+PANEL_P    <- 6000     # J/s per solar panel
+BAT_CAP    <- 6000000  # J per advanced battery rack
+BAT_RATE   <- 10000    # J/s per advanced battery rack
+
+# Time mapping: 13 in-game night hours = 40 real minutes = 2400 s
+SEC_PER_IG_HOUR <- 2400 / 13
+
+# ---------------- Helpers ----------------
+parse_num <- function(x, default = 0) {
+  # pull first numeric-looking token; fall back to default
+  val <- suppressWarnings(as.numeric(gsub("[^0-9.\\-]", "", x)))
+  if (is.na(val)) default else val
+}
+
+calc_requirements <- function(n_fridge, n_freezer, daylight_hours) {
+  # clamp daylight to (0,24) to avoid divide-by-zero
+  dh <- max(0.01, min(23.99, daylight_hours))
+
+  # total continuous load
+  P <- n_fridge * FRIDGE_P + n_freezer * FREEZER_P
+
+  # durations (real seconds)
+  day_s   <- dh * SEC_PER_IG_HOUR
+  night_s <- (24 - dh) * SEC_PER_IG_HOUR
+
+  # Solar: must satisfy instantaneous AND energy balance over 24h
+  panels_instant <- ceiling(P / PANEL_P)
+  panels_energy  <- ceiling(P * 24 / (PANEL_P * dh))
+  panels_needed  <- max(panels_instant, panels_energy)
+
+  # Batteries: capacity for night + discharge rate at night load
+  night_energy       <- P * night_s
+  bat_capacity_need  <- ceiling(night_energy / BAT_CAP)
+  bat_rate_need      <- ceiling(P / BAT_RATE)
+  batteries_needed   <- max(bat_capacity_need, bat_rate_need)
+
+  list(
+    P = P,
+    day_s = day_s,
+    night_s = night_s,
+    night_energy = night_energy,
+    panels_instant = panels_instant,
+    panels_energy = panels_energy,
+    panels_needed = panels_needed,
+    bat_capacity_needed = bat_capacity_need,
+    bat_rate_needed = bat_rate_need,
+    batteries_needed = batteries_needed,
+    daylight = dh
+  )
+}
+
+sweep_variable <- function(var_seq, fixed_fridge, fixed_freezer, fixed_daylight, vary = c("fridge","freezer","daylight")) {
+  vary <- match.arg(vary)
+  out <- vector("list", length(var_seq))
+  for (i in seq_along(var_seq)) {
+    v <- var_seq[i]
+    if (vary == "fridge") {
+      nF <- v; nZ <- fixed_freezer; dh <- fixed_daylight
+    } else if (vary == "freezer") {
+      nF <- fixed_fridge; nZ <- v; dh <- fixed_daylight
+    } else {
+      nF <- fixed_fridge; nZ <- fixed_freezer; dh <- v
+    }
+    r <- calc_requirements(nF, nZ, dh)
+    out[[i]] <- data.frame(
+      x_batteries = r$batteries_needed,
+      y_panels    = r$panels_needed,
+      var_value   = v
+    )
+  }
+  do.call(rbind, out)
+}
+
+# ---------------- UI ----------------
+ui <- fluidPage(
+  titlePanel("ICARUS Power Planner — Solar Panels & Advanced Batteries"),
+  fluidRow(
+    # Upper-left: TEXT inputs
+    column(
+      width = 4,
+      wellPanel(
+        h4("Inputs (text fields)"),
+        textInput("n_fridge_txt",  "Number of Refrigerators", value = "2"),
+        textInput("n_freezer_txt", "Number of Freezers",      value = "10"),
+        textInput("daylight_txt",  "Hours of Daylight a Panel Receives (0–24)", value = "11"),
+        helpText("Assumptions: Fridge 500 J/s, Freezer 2,500 J/s, Solar panel 6,000 J/s, Advanced Battery 6,000,000 J & 10,000 J/s.")
+      )
+    ),
+    # Upper-right: 2x2 grid with three graphs
+    column(
+      width = 8,
+      h4("Graphs"),
+      plotOutput("plots_grid", height = "650px")
+    )
+  ),
+  fluidRow(
+    column(
+      width = 12,
+      h4("Calculation Steps"),
+      verbatimTextOutput("calc_steps")
+    )
+  )
+)
+
+# ---------------- Server ----------------
+server <- function(input, output, session) {
+
+  # Parse user text inputs -> numeric (with basic clamping)
+  vals <- reactive({
+    list(
+      n_fridge = max(0, floor(parse_num(input$n_fridge_txt, 0))),
+      n_freezer = max(0, floor(parse_num(input$n_freezer_txt, 0))),
+      daylight = max(0.01, min(23.99, parse_num(input$daylight_txt, 11)))
+    )
+  })
+
+  req_reactive <- reactive({
+    v <- vals()
+    calc_requirements(v$n_fridge, v$n_freezer, v$daylight)
+  })
+
+  # Plots grid (three plots in a 2x2; bottom-right empty)
+  output$plots_grid <- renderPlot({
+    v <- vals()
+
+    # Sweep ranges
+    fr_max  <- max(5, v$n_fridge * 2)
+    frz_max <- max(5, v$n_freezer * 2)
+
+    fr_range  <- seq(0, fr_max, by = max(1, floor(fr_max / 20)))
+    if (length(fr_range) < 2) fr_range <- 0:5
+
+    frz_range <- seq(0, frz_max, by = max(1, floor(frz_max / 20)))
+    if (length(frz_range) < 2) frz_range <- 0:5
+
+    day_min <- 1
+    day_max <- 23
+    day_range <- seq(max(day_min, v$daylight - 4), min(day_max, v$daylight + 4), length.out = 9)
+
+    # 1) Hold freezers & daylight; vary refrigerators
+    df1 <- sweep_variable(fr_range, v$n_fridge, v$n_freezer, v$daylight, vary = "fridge")
+    p1 <- ggplot(df1, aes(x = x_batteries, y = y_panels)) +
+      geom_line() + geom_point() +
+      labs(
+        title = "Vary Refrigerators (Freezers & Daylight fixed)",
+        x = "Batteries (Advanced Racks)",
+        y = "Solar Panels"
+      ) +
+      theme_minimal()
+
+    # 2) Hold refrigerators & daylight; vary freezers
+    df2 <- sweep_variable(frz_range, v$n_fridge, v$n_freezer, v$daylight, vary = "freezer")
+    p2 <- ggplot(df2, aes(x = x_batteries, y = y_panels)) +
+      geom_line() + geom_point() +
+      labs(
+        title = "Vary Freezers (Refrigerators & Daylight fixed)",
+        x = "Batteries (Advanced Racks)",
+        y = "Solar Panels"
+      ) +
+      theme_minimal()
+
+    # 3) Hold refrigerators & freezers; vary daylight hours
+    df3 <- sweep_variable(day_range, v$n_fridge, v$n_freezer, v$daylight, vary = "daylight")
+    p3 <- ggplot(df3, aes(x = x_batteries, y = y_panels)) +
+      geom_line() + geom_point() +
+      labs(
+        title = "Vary Daylight Hours (Fridges & Freezers fixed)",
+        x = "Batteries (Advanced Racks)",
+        y = "Solar Panels"
+      ) +
+      theme_minimal()
+
+    (p1 + p2) / (p3 + plot_spacer())
+  })
+
+  # Calculation steps (bottom panel)
+  output$calc_steps <- renderText({
+    v <- vals()
+    r <- req_reactive()
+    paste0(
+      "Given inputs (parsed):\n",
+      "  Refrigerators: ", v$n_fridge, "\n",
+      "  Freezers:      ", v$n_freezer, "\n",
+      "  Daylight:      ", round(v$daylight, 2), " in-game hours (≈ ",
+      round(v$daylight * SEC_PER_IG_HOUR, 1), " real seconds)\n",
+      "\n",
+      "1) Load P (J/s):\n",
+      "   P = 500 * fridges + 2500 * freezers = ",
+      500 * v$n_fridge, " + ", 2500 * v$n_freezer, " = ", r$P, " J/s\n",
+      "\n",
+      "2) Time mapping:\n",
+      "   SEC_PER_IG_HOUR = 2400 / 13 ≈ ", round(SEC_PER_IG_HOUR, 3), " s per in-game hour\n",
+      "   Day seconds  = daylight_hours * SEC_PER_IG_HOUR = ", round(r$day_s, 1), " s\n",
+      "   Night seconds = (24 - daylight_hours) * SEC_PER_IG_HOUR = ", round(r$night_s, 1), " s\n",
+      "\n",
+      "3) Solar panels needed:\n",
+      "   Instantaneous: ceil(P / 6000) = ", r$panels_instant, "\n",
+      "   Energy balance over 24h:\n",
+      "     Need Np * 6000 * day_s ≥ P * (day_s + night_s) = P * 24 * SEC_PER_IG_HOUR\n",
+      "     Rearranged: Np ≥ P * 24 / (6000 * daylight_hours) = ", r$panels_energy, "\n",
+      "   Panels needed = max(instant, energy) = ", r$panels_needed, "\n",
+      "\n",
+      "4) Batteries (Advanced racks):\n",
+      "   Night energy = P * night_s = ", format(round(r$night_energy), big.mark=","), " J\n",
+      "   Capacity: ceil(night_energy / 6,000,000) = ", r$bat_capacity_needed, "\n",
+      "   Discharge: ceil(P / 10,000) = ", r$bat_rate_needed, "\n",
+      "   Batteries needed = max(capacity, discharge) = ", r$batteries_needed, "\n",
+      "\n",
+      "The three graphs plot (Batteries, Panels) while sweeping one variable at a time\n",
+      "— refrigerators, freezers, or daylight hours — with the other two held fixed.\n"
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
