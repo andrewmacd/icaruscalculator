@@ -32,12 +32,12 @@ ul.task-list li input[type="checkbox"] {
 <link href="advancedcalc_files/libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="advancedcalc_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="advancedcalc_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="advancedcalc_files/libs/bootstrap/bootstrap-c0367b04c37547644fece4185067e4a7.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="advancedcalc_files/libs/bootstrap/bootstrap-1bc8a17f135ab3d594c857e9f48e611b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
 
-<body class="fullcontent">
+<body class="bslib-page-fill bslib-gap-spacing bslib-flow-mobile html-fill-container fullcontent">
 
 <div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
 
@@ -62,53 +62,56 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<div class="cell card bg-light p-2 g-col-24 g-col-lg-7">
+<div class="cell">
 <div class="cell-output-display">
+
+<bslib-layout-columns class="bslib-grid grid bslib-mb-spacing html-fill-item" col-widths-sm="4,8" data-require-bs-caller="layout_columns()" data-require-bs-version="5">
+<div class="bslib-grid-item bslib-gap-spacing html-fill-container">
+<div class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container" data-bslib-card-init="" data-require-bs-caller="card()" data-require-bs-version="5">
+<div class="card-header">Inputs</div>
+<div class="card-body bslib-gap-spacing html-fill-item html-fill-container" style="margin-top:auto;margin-bottom:auto;flex:1 1 auto;">
 <div class="form-group shiny-input-container">
 <label class="control-label" id="n_fridge-label" for="n_fridge">Number of Refrigerators</label>
-<input id="n_fridge" type="number" class="shiny-input-number form-control" value="2" data-update-on="change" min="0" step="1">
+<input id="n_fridge" type="number" class="shiny-input-number form-control" value="2" min="0" step="1">
 </div>
-</div>
-<div class="cell-output-display">
 <div class="form-group shiny-input-container">
 <label class="control-label" id="n_freezer-label" for="n_freezer">Number of Freezers</label>
-<input id="n_freezer" type="number" class="shiny-input-number form-control" value="10" data-update-on="change" min="0" step="1">
+<input id="n_freezer" type="number" class="shiny-input-number form-control" value="10" min="0" step="1">
 </div>
-</div>
-<div class="cell-output-display">
 <div class="form-group shiny-input-container">
 <label class="control-label" id="daylight-label" for="daylight">Hours of Daylight (0–24)</label>
-<input id="daylight" type="number" class="shiny-input-number form-control" value="11" data-update-on="change" min="1" max="23" step="0.5">
+<input id="daylight" type="number" class="shiny-input-number form-control" value="11" min="1" max="23" step="0.5">
+</div>
+<span class="help-block"></span>
+</div>
+<script data-bslib-card-init="">bslib.Card.initializeAllCards();</script>
 </div>
 </div>
-<div class="cell-output-display">
-<span class="help-block">Assumptions: Fridge 500 J/s, Freezer 2,500 J/s, Solar 6,000 J/s, Battery 6,000,000 J &amp; 10,000 J/s.</span>
+<div class="bslib-grid-item bslib-gap-spacing html-fill-container">
+<div class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container" data-bslib-card-init="" data-require-bs-caller="card()" data-require-bs-version="5">
+<div class="card-header">Visualizations</div>
+<script data-bslib-card-init="">bslib.Card.initializeAllCards();</script>
 </div>
 </div>
-<section id="visualisation" class="level1">
-<h1>Visualisation</h1>
-<div class="cell">
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="advancedcalc_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
+</bslib-layout-columns>
+<div class="card bslib-card bslib-mb-spacing html-fill-item html-fill-container" data-bslib-card-init="" data-require-bs-caller="card()" data-require-bs-version="5">
+<div class="card-header">Calculations</div>
+<div class="card-body bslib-gap-spacing html-fill-item html-fill-container" style="margin-top:auto;margin-bottom:auto;flex:1 1 auto;">
+<pre class="shiny-text-output noplaceholder" id="calc_steps"></pre>
 </div>
+<script data-bslib-card-init="">bslib.Card.initializeAllCards();</script>
 </div>
-</div>
-</section>
-<section id="calculations" class="level1">
-<h1>Calculations</h1>
-<div class="cell">
-<div class="cell-output-display">
-<pre id="calc_steps" class="shiny-text-output"></pre>
+
 </div>
 </div>
 <p>
 <script type="application/shiny-prerendered" data-context="server-start">
 library(shiny)
+library(bslib)
 library(ggplot2)
 library(readr)
+
+options("scipen"=10) 
 
 # ---------------- Constants (ICARUS) ----------------
 FRIDGE_P   <- 500      # J/s per refrigerator
@@ -192,10 +195,18 @@ output$calc_steps <- renderText({
   r <- req_reactive()
   
   paste0(
+  "Assumptions:\n",
+  tab, "Refrigerators:    ", FRIDGE_P, " J/s draw\n",
+  tab, "Freezers:         ", FREEZER_P, " J/s draw\n", 
+  tab, "Solar panels:     ", PANEL_P, " J/s generation\n",
+  tab, "Battery:          ", BAT_CAP, " J capacity\n",
+  tab, "Battery:          ", BAT_RATE, " J/s discharge\n",
+  tab, "24h cycle length: ", IG_24H_MIN, " real minutes",
+  "\n",
   "Given inputs:\n",
-  tab, "Refrigerators: ", v$n_fridge, "\n",
-  tab, "Freezers:      ", v$n_freezer, "\n",
-  tab, "Daylight:      ", v$daylight, " in-game hours (",
+  tab, "Refrigerators:    ", v$n_fridge, "\n",
+  tab, "Freezers:         ", v$n_freezer, "\n",
+  tab, "Daylight:         ", v$daylight, " in-game hours (",
   round(input$daylight * SEC_PER_IG_HR, 0),  " real seconds)\n",
   "\n",
   "1) Load P (J/s):\n",
@@ -203,17 +214,22 @@ output$calc_steps <- renderText({
   tab, r$P, " J/s", " = ", round(FRIDGE_P * v$n_fridge, 0), " + ", round(FREEZER_P, 0) * v$n_freezer, "\n",
   "\n",
   "2) Time mapping:\n",
-  tab, "Real seconds per in-game hour = day-cycle length (", IG_24H_MIN, " min) * 60 seconds / 24 hours ≈ ", round(SEC_PER_IG_HR, 0), "s\n",
+  tab, "Real seconds per in-game hour = day_cycle_length (", IG_24H_MIN, " min) * 60 seconds / 24 hours ≈ ", round(SEC_PER_IG_HR, 0), "s\n",
   tab, "Real seconds per in-game day  = daylight_hours * ", round(SEC_PER_IG_HR, 0), " = ", round(r$day_s, 0), " s\n",
   tab, "Real seconds per in-game night = nightime_hours = (24 - daylight_hours) * ", round(SEC_PER_IG_HR, 0), " = ", round(r$night_s, 0), " s\n",
   "\n",
   "3) Solar panels needed:\n",
-  tab, "Instantaneous: ceil(P / 6000) = ", r$panels_instant, "\n",
+  tab, "Daytime power need: ceiling(P / 6000) = ", r$panels_instant, "\n",
   tab, "Energy balance over 24h:\n",
-  tab, "Need Np * 6000 * day_s ≥ P * (day_s + night_s) = P * 24 * SEC_PER_IG_HR\n",
-  tab, "Rearranged: Np ≥ P * 24 / (6000 * daylight_hours) = ", r$panels_energy, "\n",
-  tab, "Panels needed = max(instant, energy) = ", r$panels_needed, "\n",
-  "\n")
+  tab, tab, "Need: num_panels * panel_power * day_s ≥ P * (day_s + night_s) = P * 24 * SEC_PER_IG_HR\n",
+  tab, tab, "Rearranged: P * 24 / (panel_power * day_s) = ", r$panels_energy, "\n",
+  tab, "Panels needed = max(daytime_use, full_day_use) = ", r$panels_needed, "\n",
+  "\n",
+  "4) Batteries (advanced racks):\n",
+  tab, "Night energy = P * night_s = ", format(round(r$night_energy), big.mark=","), " J\n",
+  tab, "Capacity: ceiling of(night_energy / 6,000,000) = ", r$bat_capacity_needed, "\n",
+  tab, "Discharge: ceiling of(P / 10,000) = ", r$bat_rate_needed, "\n",
+  tab, "Batteries needed = max(capacity, discharge) = ", r$batteries_needed, "\n")
 })
 </script>
  
@@ -246,15 +262,14 @@ ojs_define <- function(..., .session = shiny::getDefaultReactiveDomain()) {
 </p>
 <!--html_preserve-->
 <script type="application/shiny-prerendered" data-context="dependencies">
-{"type":"list","attributes":{},"value":[]}
+{"type":"list","attributes":{},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["jquery"]},{"type":"character","attributes":{},"value":["3.6.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["lib/3.6.0"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["jquery-3.6.0.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["jquerylib"]},{"type":"character","attributes":{},"value":["0.1.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bootstrap"]},{"type":"character","attributes":{},"value":["5.3.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["href"]}},"value":[{"type":"character","attributes":{},"value":["advancedcalc_files/libs/bootstrap-5.3.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["viewport"]}},"value":[{"type":"character","attributes":{},"value":["width=device-width, initial-scale=1, shrink-to-fit=no"]}]},{"type":"character","attributes":{},"value":["bootstrap.bundle.min.js"]},{"type":"character","attributes":{},"value":["bootstrap.min.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"logical","attributes":{},"value":[true]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bs3compat"]},{"type":"character","attributes":{},"value":["0.9.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["bs3compat/js"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["transition.js","tabs.js","bs3compat.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["bslib"]},{"type":"character","attributes":{},"value":["0.9.0"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bslib-component-js"]},{"type":"character","attributes":{},"value":["0.9.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["components/dist"]}]},{"type":"NULL"},{"type":"list","attributes":{},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["src"]}},"value":[{"type":"character","attributes":{},"value":["components.min.js"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["src","type"]}},"value":[{"type":"character","attributes":{},"value":["web-components.min.js"]},{"type":"character","attributes":{},"value":["module"]}]}]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["bslib"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.9.0"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bslib-component-css"]},{"type":"character","attributes":{},"value":["0.9.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["components/dist"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["components.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["bslib"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.9.0"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bslib-tag-require"]},{"type":"character","attributes":{},"value":["0.9.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["components"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["tag-require.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["bslib"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.9.0"]}]}]}
 </script>
 <!--/html_preserve-->
 <!--html_preserve-->
 <script type="application/shiny-prerendered" data-context="execution_dependencies">
-{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages"]}},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages","version"]},"class":{"type":"character","attributes":{},"value":["data.frame"]},"row.names":{"type":"integer","attributes":{},"value":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50]}},"value":[{"type":"character","attributes":{},"value":["base","cli","compiler","datasets","digest","dplyr","evaluate","farver","fastmap","generics","ggplot2","glue","graphics","grDevices","grid","gtable","hms","htmltools","httpuv","jsonlite","knitr","labeling","later","lifecycle","magrittr","methods","mime","pillar","pkgconfig","promises","R6","RColorBrewer","Rcpp","readr","rlang","rmarkdown","rstudioapi","scales","shiny","stats","tibble","tidyselect","tools","tzdb","utils","vctrs","withr","xfun","xtable","yaml"]},{"type":"character","attributes":{},"value":["4.5.1","3.6.5","4.5.1","4.5.1","0.6.37","1.1.4","1.0.4","2.1.2","1.2.0","0.1.4","3.5.2","1.8.0","4.5.1","4.5.1","4.5.1","0.3.6","1.1.3","0.5.8.1","1.6.16","2.0.0","1.50","0.4.3","1.4.2","1.0.4","2.0.3","4.5.1","0.13","1.11.0","2.0.3","1.3.3","2.6.1","1.1-3","1.1.0","2.1.5","1.1.6","2.29","0.17.1","1.4.0","1.11.1","4.5.1","3.3.0","1.2.1","4.5.1","0.5.0","4.5.1","0.6.5","3.0.2","0.52","1.8-4","2.3.10"]}]}]}
+{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages"]}},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages","version"]},"class":{"type":"character","attributes":{},"value":["data.frame"]},"row.names":{"type":"integer","attributes":{},"value":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56]}},"value":[{"type":"character","attributes":{},"value":["base","bslib","cachem","cli","colorspace","compiler","datasets","digest","dplyr","evaluate","fastmap","fs","generics","ggplot2","glue","graphics","grDevices","grid","gtable","hms","htmltools","htmlwidgets","httpuv","jquerylib","jsonlite","knitr","later","lifecycle","magrittr","memoise","methods","mime","munsell","pillar","pkgconfig","promises","R6","Rcpp","readr","rlang","rmarkdown","rstudioapi","sass","scales","shiny","stats","tibble","tidyselect","tools","tzdb","utils","vctrs","withr","xfun","xtable","yaml"]},{"type":"character","attributes":{},"value":["4.4.2","0.9.0","1.1.0","3.6.4","2.1-1","4.4.2","4.4.2","0.6.37","1.1.4","1.0.3","1.2.0","1.6.5","0.1.3","3.5.1","1.8.0","4.4.2","4.4.2","4.4.2","0.3.6","1.1.3","0.5.8.1","1.6.4","1.6.15","0.1.4","1.9.0","1.49","1.4.1","1.0.4","2.0.3","2.0.1","4.4.2","0.12","0.5.1","1.10.1","2.0.3","1.3.2","2.6.1","1.0.14","2.1.5","1.1.5","2.29","0.17.1","0.4.9","1.3.0","1.10.0","4.4.2","3.2.1","1.2.1","4.4.2","0.4.0","4.4.2","0.6.5","3.0.2","0.51","1.8-4","2.3.10"]}]}]}
 </script>
 <!--/html_preserve-->
-</section>
 
 </main>
 <!-- /main column -->
