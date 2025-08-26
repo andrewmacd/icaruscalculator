@@ -1,0 +1,15 @@
+---
+title: "ICARUS Calculators"
+format: 
+  dashboard:
+    logo: images/icarus.png
+    nav-buttons: [github]
+---
+
+# Electricity
+
+
+
+# Combat
+
+Coming soon...
