@@ -4,12 +4,183 @@ format:
   dashboard:
     logo: images/icarus.png
     nav-buttons: [github]
+    github: https://github.com/andrewmacd/icaruscalculator
+    theme: litera
+server: shiny
 ---
 
-# Electricity
+```{r}
+#| context: setup
+#| label: setup
 
+library(shiny)
+library(bslib)
+library(bsicons)
+library(lubridate)
+library(tidyverse)
+library(readr)
+library(ggrepel)
 
+options("scipen"=10) 
+theme_set(theme_minimal())
+
+# --------------------- UI defaults   ----------------
+
+# Only care that this is at midnight
+default_time <- floor_date(now(), "day")
+
+# ---------------- Constants (ICARUS) ----------------
+FREEZER_P  <- 2500     # J/s per freezer
+FRIDGE_P   <- 500      # J/s per refrigerator
+PANEL_P    <- 6000     # J/s per solar panel
+BAT_CAP    <- 6000000  # J per advanced battery rack
+BAT_RATE   <- 10000    # J/s per advanced battery rack
+
+# Time mapping: 24 in-game hours = 70 real minutes
+IG_24H_MIN <- 70
+IG_24H_SEC <- 70 * 60
+SEC_PER_IG_HR <- IG_24H_SEC / 24
+
+calc_energy_used <- function(n_freezer, n_fridge) {
+  # total continuous load
+  P <- n_freezer * FREEZER_P + n_fridge * FRIDGE_P  
+
+  P
+}
+
+calc_requirements <- function(load_P, daylight_hours) {
+  # clamp daylight to (0,24) to avoid divide-by-zero
+  dh <- max(0.01, min(23.99, daylight_hours))
+  
+  # durations (real seconds)
+  day_s   <- dh * SEC_PER_IG_HR
+  night_s <- (24 - dh) * SEC_PER_IG_HR
+  
+  # Solar: must satisfy instantaneous AND energy balance over 24h
+  panels_instant <- ceiling(load_P / PANEL_P)
+  panels_energy  <- ceiling(load_P * 24 / (PANEL_P * dh))
+  panels_needed  <- max(panels_instant, panels_energy)
+  
+  # Batteries: capacity for night + discharge rate at night load
+  night_energy       <- load_P * night_s
+  bat_capacity_need  <- ceiling(night_energy / BAT_CAP)
+  bat_rate_need      <- ceiling(load_P / BAT_RATE)
+  batteries_needed   <- max(bat_capacity_need, bat_rate_need)
+  
+  list(
+    load_P = load_P,
+    day_s = day_s,
+    night_s = night_s,
+    night_energy = night_energy,
+    panels_instant = panels_instant,
+    panels_energy = panels_energy,
+    panels_needed = panels_needed,
+    bat_capacity_needed = bat_capacity_need,
+    bat_rate_needed = bat_rate_need,
+    batteries_needed = batteries_needed,
+    daylight = dh
+  )
+}
+```
+
+# Solar Panels & Batteries Needed
+
+##  {.sidebar}
+
+```{r}
+#| label: sunlightentry
+
+radioButtons("sunlight_type", 
+             "Calculate by total sunlight or by sunlight start/stop time?",
+             choices=c("Total time" = "ttime", 
+                       "Start/stop time" = "sstime"),
+             selected="ttime")
+
+conditionalPanel("input.sunlight_type == 'ttime'",
+                 numericInput("total_time", "Total daily sunlight (hours): ", value=11, min=1, max=23, step=0.5))
+
+conditionalPanel("input.sunlight_type == 'sstime'",
+                 numericInput("start_hour", "Sunlight start hour: ", value=7, min=1, max=23, step=0.5),
+                 numericInput("start_minute", "Sunlight start minute: ", value=0, min=0, max=59, step=1),
+                 numericInput("end_hour", "Sunlight end hour (24 hr time): ", value=18, min=1.5, max=24, step=0.5),
+                 numericInput("end_minute", "Sunlight end minute: ", value=0, min=0, max=59, step=1))
+```
+
+```{r}
+#| label: energyentry
+
+radioButtons("energy_type",
+             "Calculate for generic energy draw amount or for freezers & refrigerators?",
+             choices=c("Generic energy" = "generic",
+                       "Freezers & refrigerators" = "fandfs"),
+             selected="generic")
+
+conditionalPanel("input.energy_type == 'generic'",
+                 numericInput("generic_energy", "Energy draw (J/s): ", value=5000, min=100, max=100000, step=1))
+
+conditionalPanel("input.energy_type == 'fandfs'",
+                 numericInput("n_freezer", "Number of freezers: ", value=10, min=1, max=100, step=1),
+                 numericInput("n_fridge", "Number of refrigerators: ", value=2, min=0, max=100, step=1))
+```
+
+## Column
+
+### Row {height="20%"}
+
+```{r}
+value_box(
+  title = "Batteries needed",
+  showcase = bs_icon("battery-full"),
+  theme = "light",
+  value = textOutput("n_batteries")
+)
+```
+
+```{r}
+value_box(
+  title = "Solar panels needed",
+  showcase = bs_icon("shadows"),
+  theme = "light",
+  value = textOutput("n_solar_panels")
+)
+```
+
+```{r}
+value_box(
+  title = "Expected battery power left at end of night cycle",
+  showcase = bs_icon("battery-half"),
+  theme = "light",
+  value = textOutput("r_batt_power")
+)
+```
+
+### Row {height="80%"}
+
+Some graphs
+
+```{r}
+
+```
+
+Some other graphs
 
 # Combat
 
 Coming soon...
+
+```{r}
+#| label: reactivecode
+#| context: server
+
+output$n_batteries <- renderText({
+  input$total_time
+})
+
+output$n_solar_panels <- renderText({
+  input$generic_energy
+})
+
+output$r_batt_power <- renderText({
+  paste0(input$n_freezer, " J")
+})
+```

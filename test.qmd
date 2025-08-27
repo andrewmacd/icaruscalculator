@@ -1,0 +1,29 @@
+---
+title: "MWE"
+format: html
+server: shiny
+---
+
+```{r}
+#| context: setup
+
+library(shiny)
+library(shinyTime)
+```
+
+# Minimal example
+
+```{r}
+timeInput("total_time", "Total daily sunlight: ")
+
+textOutput("text1")
+```
+
+```{r}
+#| context: server
+
+output$text1 <- renderText({
+ strftime(input$total_time, "%T")
+})
+```
+
