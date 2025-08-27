@@ -4,7 +4,7 @@ format:
   dashboard:
     logo: images/icarus.png
     nav-buttons: [github]
-    github: https://github.com/andrewmacd/icaruscalculator
+    repo-url: https://github.com/andrewmacd/icaruscalculator
     theme: litera
 server: shiny
 ---
