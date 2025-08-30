@@ -1,18 +1,9 @@
 # Legacy code
 
-```{r}
-#| label: ui
-
-page_navbar(
-  title="Icarus Calculators",
-  nav_panel(title="Electricity Calculator", p("First page content")),
-  nav_panel(title="Combat Calcultor", p("Coming soon")),
-  nav_spacer(),
-  nav_menu(title="Links",
-           align="right",
-           nav_item(link_github))
-)
-```
+scale_x_continuous(limits = x_lims, 
+                   breaks = seq(x_lims[1], x_lims[2], 1)) +
+  scale_y_continuous(limits = y_lims, 
+                     breaks = seq(y_lims[1], y_lims[2], 1)) + 
 
 
 ```{r}

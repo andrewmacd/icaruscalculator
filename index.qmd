@@ -4,7 +4,6 @@ format:
   dashboard:
     logo: images/icarus.png
     nav-buttons: [github]
-    repo-url: https://github.com/andrewmacd/icaruscalculator
     theme: litera
 server: shiny
 ---
@@ -41,6 +40,20 @@ IG_24H_MIN <- 70
 IG_24H_SEC <- 70 * 60
 SEC_PER_IG_HR <- IG_24H_SEC / 24
 
+# Graphical dictionary to get units of variables
+unit_defs <- list(
+  "power_draw_needed" = " J/s",
+  "daylight_hours" = " hours",
+  "n_freezer" = " freezers",
+  "n_fridge" = " refrigerators"
+)
+
+# Specify the unit jumps for offsets for the graphs
+POWER_UNIT_OFFSET <- 3000
+DAYLIGHT_UNIT_OFFSET <- 1
+FREEZER_UNIT_OFFSET <- 1
+FRIDGE_UNIT_OFFSET <- 1
+
 calc_energy_used <- function(n_freezer, n_fridge) {
   # total continuous load
   P <- n_freezer * FREEZER_P + n_fridge * FRIDGE_P  
@@ -48,17 +61,31 @@ calc_energy_used <- function(n_freezer, n_fridge) {
   P
 }
 
+calc_duration <- function(start_hour,
+                          start_minute,
+                          end_hour,
+                          end_minute) {
+  
+  start_time <- make_datetime(year = 2025, month = 1, day = 1,
+                              hour = start_hour, min = start_minute)
+  end_time   <- make_datetime(year = 2025, month = 1, day = 1,
+                              hour = end_hour, min = end_minute)
+  
+  duration <- as.numeric(difftime(end_time, start_time, units = "mins"))
+  
+  # Convert to hours a day
+  duration <- duration / 60
+}
+
 calc_requirements <- function(load_P, daylight_hours) {
-  # clamp daylight to (0,24) to avoid divide-by-zero
-  dh <- max(0.01, min(23.99, daylight_hours))
   
   # durations (real seconds)
-  day_s   <- dh * SEC_PER_IG_HR
-  night_s <- (24 - dh) * SEC_PER_IG_HR
+  day_s   <- daylight_hours * SEC_PER_IG_HR
+  night_s <- (24 - daylight_hours) * SEC_PER_IG_HR
   
   # Solar: must satisfy instantaneous AND energy balance over 24h
   panels_instant <- ceiling(load_P / PANEL_P)
-  panels_energy  <- ceiling(load_P * 24 / (PANEL_P * dh))
+  panels_energy  <- ceiling(load_P * 24 / (PANEL_P * daylight_hours))
   panels_needed  <- max(panels_instant, panels_energy)
   
   # Batteries: capacity for night + discharge rate at night load
@@ -67,8 +94,14 @@ calc_requirements <- function(load_P, daylight_hours) {
   bat_rate_need      <- ceiling(load_P / BAT_RATE)
   batteries_needed   <- max(bat_capacity_need, bat_rate_need)
   
+  # Battery remaining at the END of the night cycle
+  total_bank_capacity <- batteries_needed * BAT_CAP
+  battery_energy_remaining <- max(total_bank_capacity - night_energy, 0)
+  battery_remaining_pct    <- if (total_bank_capacity > 0) 100 * battery_energy_remaining / total_bank_capacity else 0
+  
   list(
     load_P = load_P,
+    daylight_hours = daylight_hours,
     day_s = day_s,
     night_s = night_s,
     night_energy = night_energy,
@@ -78,8 +111,79 @@ calc_requirements <- function(load_P, daylight_hours) {
     bat_capacity_needed = bat_capacity_need,
     bat_rate_needed = bat_rate_need,
     batteries_needed = batteries_needed,
-    daylight = dh
+    total_bank_capacity = total_bank_capacity,
+    battery_energy_remaining = battery_energy_remaining,
+    battery_remaining_pct = battery_remaining_pct
   )
+}
+
+# Zero/default placeholder used before "Calculate" is clicked
+zero_requirements <- function() {
+  list(
+    load_P = 0,
+    daylight_hours = 0,
+    day_s = 0,
+    night_s = 0,
+    night_energy = 0,
+    panels_instant = 0,
+    panels_energy = 0,
+    panels_needed = 0,
+    bat_capacity_needed = 0,
+    bat_rate_needed = 0,
+    batteries_needed = 0,
+    total_bank_capacity = 0,
+    battery_energy_remaining = 0,
+    battery_remaining_pct = 0
+  )
+}
+
+construct_calc_step_text <- function(user_inputs, calc_outputs, is_generic_energy) {
+  
+  inputs_text <- ""
+  load_text <- ""
+  
+  if(is_generic_energy) {
+    inputs_text <- paste0("  Power draw (J):  ", user_inputs$power_draw_needed, "\n")
+    load_text <- paste0("   P = ", user_inputs$power_draw_needed, " J/s\n")
+  } else {
+    inputs_text <- paste0("  Refrigerators:   ", user_inputs$n_fridge, "\n",
+                          "  Freezers:        ", user_inputs$n_freezer, "\n")
+    load_text <- paste0("   P = ", FRIDGE_P, " * fridges + ", FREEZER_P, " * freezers = ",
+                        FRIDGE_P * user_inputs$n_fridge, " + ", FREEZER_P * user_inputs$n_freezer, 
+                        " = ", calc_outputs$load_P, " J/s\n")
+  }
+  
+  output_text <- paste0("Given inputs (parsed):\n",
+                        inputs_text,
+                        "  Daylight:        ", round(user_inputs$daylight_hours, 2), " in-game hours (≈ ",
+                        round(user_inputs$daylight_hours * SEC_PER_IG_HR, 1), " real seconds)\n",
+                        "\n",
+                        "1) Load P (J/s):\n",
+                        load_text,
+                        "\n",
+                        "2) Time mapping:\n",
+                        "   SEC_PER_IG_HOUR = 2400 / 13 ≈ ", round(SEC_PER_IG_HR, 3), " s per in-game hour\n",
+                        "   Day seconds  = daylight_hours * SEC_PER_IG_HOUR = ", round(calc_outputs$day_s, 1), " s\n",
+                        "   Night seconds = (24 - daylight_hours) * SEC_PER_IG_HOUR = ", round(calc_outputs$night_s, 1), " s\n",
+                        "\n",
+                        "3) Solar panels needed:\n",
+                        "   Instantaneous: ceil(P / 6000) = ", calc_outputs$panels_instant, "\n",
+                        "   Energy balance over 24h:\n",
+                        "     Need Np * 6000 * day_s ≥ P * (day_s + night_s) = P * 24 * SEC_PER_IG_HOUR\n",
+                        "     Rearranged: Np ≥ P * 24 / (6000 * daylight_hours) = ", calc_outputs$panels_energy, "\n",
+                        "   Panels needed = max(instant, energy) = ", calc_outputs$panels_needed, "\n",
+                        "\n",
+                        "4) Batteries (Advanced racks):\n",
+                        "   Night energy = P * night_s = ", format(round(calc_outputs$night_energy), big.mark=","), " J\n",
+                        "   Capacity: ceil(night_energy / 6,000,000) = ", calc_outputs$bat_capacity_needed, "\n",
+                        "   Discharge: ceil(P / 10,000) = ", calc_outputs$bat_rate_needed, "\n",
+                        "   Batteries needed = max(capacity, discharge) = ", calc_outputs$batteries_needed, "\n",
+                        "   Total bank capacity = batteries * 6,000,000 = ", format(calc_outputs$total_bank_capacity, big.mark=","), " J\n",
+                        "   **Remaining after night** = max(total bank − night energy, 0) = ",
+                        format(round(calc_outputs$battery_energy_remaining), big.mark=","), " J (",
+                        sprintf("%.1f", calc_outputs$battery_remaining_pct), "% of bank)\n")
+  
+  output_text
 }
 ```
 
@@ -88,50 +192,65 @@ calc_requirements <- function(load_P, daylight_hours) {
 ##  {.sidebar}
 
 ```{r}
-#| label: sunlightentry
+#| label: daylightentry
 
-radioButtons("sunlight_type", 
-             "Calculate by total sunlight or by sunlight start/stop time?",
+br()
+
+radioButtons("daylight_type", 
+             h6("Enter total daylight (hours) or daylight start/stop time"),
              choices=c("Total time" = "ttime", 
                        "Start/stop time" = "sstime"),
              selected="ttime")
 
-conditionalPanel("input.sunlight_type == 'ttime'",
-                 numericInput("total_time", "Total daily sunlight (hours): ", value=11, min=1, max=23, step=0.5))
+conditionalPanel("input.daylight_type == 'ttime'",
+                 numericInput("total_time", "Total daylight (hours): ", value=11, min=0.5, max=23, step=0.5))
 
-conditionalPanel("input.sunlight_type == 'sstime'",
-                 numericInput("start_hour", "Sunlight start hour: ", value=7, min=1, max=23, step=0.5),
-                 numericInput("start_minute", "Sunlight start minute: ", value=0, min=0, max=59, step=1),
-                 numericInput("end_hour", "Sunlight end hour (24 hr time): ", value=18, min=1.5, max=24, step=0.5),
-                 numericInput("end_minute", "Sunlight end minute: ", value=0, min=0, max=59, step=1))
+conditionalPanel("input.daylight_type == 'sstime'",
+                 numericInput("start_hour", "Daylight start hour: ", value=7, min=1, max=23, step=0.5),
+                 numericInput("start_minute", "Daylight start minute: ", value=0, min=0, max=59, step=1),
+                 numericInput("end_hour", "Daylight end hour (24 hr time): ", value=18, min=1.5, max=24, step=0.5),
+                 numericInput("end_minute", "Daylight end minute: ", value=0, min=0, max=59, step=1))
+
+
+br()
 ```
 
 ```{r}
 #| label: energyentry
 
 radioButtons("energy_type",
-             "Calculate for generic energy draw amount or for freezers & refrigerators?",
-             choices=c("Generic energy" = "generic",
+             h6("Enter total energy draw amount or number of freezers & refrigerators"),
+             choices=c("Total energy draw" = "total_energy",
                        "Freezers & refrigerators" = "fandfs"),
-             selected="generic")
+             selected="total_energy")
 
-conditionalPanel("input.energy_type == 'generic'",
-                 numericInput("generic_energy", "Energy draw (J/s): ", value=5000, min=100, max=100000, step=1))
+conditionalPanel("input.energy_type == 'total_energy'",
+                 numericInput("energy_draw", "Energy draw (J/s): ", value=5000, min=100, max=100000, step=1))
 
 conditionalPanel("input.energy_type == 'fandfs'",
                  numericInput("n_freezer", "Number of freezers: ", value=10, min=1, max=100, step=1),
                  numericInput("n_fridge", "Number of refrigerators: ", value=2, min=0, max=100, step=1))
+
+br()
 ```
+
+```{r}
+#| label: dobutton
+
+actionButton("calc_button", "Calculate")
+```
+
 
 ## Column
 
-### Row {height="20%"}
+### Row {height="15%"}
 
 ```{r}
 value_box(
   title = "Batteries needed",
   showcase = bs_icon("battery-full"),
-  theme = "light",
+  theme = "info",
+  background = "subtle",
   value = textOutput("n_batteries")
 )
 ```
@@ -140,7 +259,8 @@ value_box(
 value_box(
   title = "Solar panels needed",
   showcase = bs_icon("shadows"),
-  theme = "light",
+  theme = "warning",
+  background = "subtle",
   value = textOutput("n_solar_panels")
 )
 ```
@@ -149,20 +269,39 @@ value_box(
 value_box(
   title = "Expected battery power left at end of night cycle",
   showcase = bs_icon("battery-half"),
-  theme = "light",
+  theme = "danger",
   value = textOutput("r_batt_power")
 )
 ```
 
-### Row {height="80%"}
+### Row {height="55%"}
 
-Some graphs
+#### Column {width="75%"}
 
 ```{r}
+#| title: "Change in requirements by variable"
 
+uiOutput("hold_constant_graph")
 ```
 
-Some other graphs
+####
+
+```{r}
+card(
+  markdown("Calculations based on an in-game day lasting 70 real minutes.\nFor more information see the ICARUS official page [link](https://surviveicarus.com/).")
+)
+```
+
+
+### Row
+
+
+```{r}
+#| title: "Calculation steps"
+
+verbatimTextOutput("calc_steps")
+```
+
 
 # Combat
 
@@ -172,15 +311,422 @@ Coming soon...
 #| label: reactivecode
 #| context: server
 
+# Default values shown before calc button pressed
+default_requirements <- zero_requirements()
+
+# Set reactive variables to defaults
+user_inputs <- reactiveValues(n_fridge = 0,
+                              n_freezer = 0,
+                              power_draw_needed = 0,
+                              daylight_hours = 0,
+                              generic_power = TRUE)
+
+default_user_inputs <- list(n_fridge = isolate(user_inputs$n_fridge),
+                            n_freezer = isolate(user_inputs$n_freezer),
+                            power_draw_needed = isolate(user_inputs$power_draw_needed),
+                            daylight_hours = isolate(user_inputs$daylight_hours),
+                            generic_power = isolate(user_inputs$generic_power))
+
+n_bat <- reactiveVal(value=default_requirements$batteries_needed)
+n_panel <- reactiveVal(value=default_requirements$panels_needed)
+p_leftover <- reactiveVal(value=default_requirements$battery_energy_remaining)
+calc_steps_text <- reactiveVal(value=construct_calc_step_text(default_user_inputs, 
+                                                              default_requirements, 
+                                                              TRUE))
+
+
+
+# Only do calculation when calculation button is pressed
+observeEvent(input$calc_button, {
+  run_power_calculation()
+})
+
+# Main UI updater function
+run_power_calculation <- function(){
+  
+  # Code to check Daylight inputs & get duration
+  if(input$daylight_type == "ttime") {
+    user_inputs$daylight_hours <- input$total_time
+  } else if(input$daylight_type == "sstime") {
+    user_inputs$daylight_hours <- calc_duration(input$start_hour,
+                                                input$start_minute,
+                                                input$end_hour,
+                                                input$end_minute)
+  }
+    
+  # Check to make sure daylight_hours is sane
+  if(user_inputs$daylight_hours <= 0 | user_inputs$daylight_hours >= 24) {
+    showModal(modalDialog(title = "Invalid input",
+                          "Please enter an appropriate value for daylight duration",
+                          easyClose = TRUE,
+                          footer = modalButton("OK")))
+    
+    # Shut this whole thing down
+    validate(need(FALSE, ""))
+  }
+  
+  # Code to check energy inputs & get total draw
+  if(input$energy_type == "total_energy") {
+    user_inputs$power_draw_needed <- input$energy_draw
+  } else if(input$energy_type == "fandfs") {
+    user_inputs$power_draw_needed <- calc_energy_used(input$n_freezer,
+                                                      input$n_fridge)
+    user_inputs$n_freezer <- input$n_freezer
+    user_inputs$n_fridge <- input$n_fridge
+    user_inputs$generic_power <- FALSE
+  }
+  
+  # Check to make sure power_draw_needed is sane
+  if(user_inputs$power_draw_needed <= 0) {
+    showModal(modalDialog(title = "Invalid input",
+                          "Please enter a positive value for power draw or number of freezers & refrigerators",
+                          easyClose = TRUE,
+                          footer = modalButton("OK")))
+    
+    # Shut this whole thing down
+    validate(need(FALSE, ""))
+  }
+  
+  # Actually calculate the outputs
+  calc_outputs <- calc_requirements(user_inputs$power_draw_needed, user_inputs$daylight_hours)
+  
+  # Update the value_boxes according to the calculated values
+  n_bat(calc_outputs$batteries_needed)
+  n_panel(calc_outputs$panels_needed)
+  p_leftover(format(round(calc_outputs$battery_energy_remaining, 
+                          0), 
+                    big.mark = ",", 
+                    scientific = FALSE))
+
+  # Update the text according to the calculated values
+  if(user_inputs$generic_power == TRUE) {
+    calc_steps_text(construct_calc_step_text(user_inputs, calc_outputs, TRUE))
+  } else {
+    calc_steps_text(construct_calc_step_text(user_inputs, calc_outputs, FALSE))
+    
+  }
+  
+  ### Note that user_inputs is a reactive variable so the plots will update automatically when the values are updated
+  ### The user inputs are only reactive to the button click, as defined
+}
+
+# Plot variations in output, holding constant number of freezers
+vary_plot <- function(user_inputs, 
+                      varying_variable,
+                      varying_variable_name,
+                      has_upper_bound,
+                      upper_bound,
+                      has_lower_bound,
+                      lower_bound,
+                      offset_distance) {
+  
+  offset_range <- c(0)
+  
+  if(has_upper_bound) {
+    if(varying_variable + 1*offset_distance < upper_bound) {
+      offset_range <- c(offset_range, 1*offset_distance)
+    }
+    if(varying_variable + 2*offset_distance < upper_bound) {
+      offset_range <- c(offset_range, 2*offset_distance)
+    }
+    if(varying_variable + 3*offset_distance < upper_bound) {
+      offset_range <- c(offset_range, 3*offset_distance)
+    }
+  } else {
+    offset_range <- c(offset_range, 
+                      1*offset_distance, 
+                      2*offset_distance, 
+                      3*offset_distance)
+  }
+  
+  if(has_lower_bound) {
+    if(varying_variable - 3*offset_distance > lower_bound) {
+      offset_range <- c(-3*offset_distance, offset_range)
+    }
+    if(varying_variable - 2*offset_distance > lower_bound) {
+      offset_range <- c(-2*offset_distance, offset_range)
+    }
+    if(varying_variable - 1*offset_distance > lower_bound) {
+      offset_range <- c(-1*offset_distance, offset_range)
+    }
+  } else {
+    offset_range <- c(-3*offset_distance, 
+                      -2*offset_distance, 
+                      -1*offset_distance,
+                      offset_range)    
+  }
+  
+  plot_data <- data.frame(
+    varying_value = numeric(),
+    solar_panels = numeric(),
+    batteries = numeric())
+  
+  for(offset_value in offset_range) {
+    
+    if(user_inputs$generic_power) {
+      if(varying_variable_name == "power_draw_needed") {
+        r <- calc_requirements(user_inputs$power_draw_needed + offset_value,
+                               user_inputs$daylight_hours)
+      } else {
+        r <- calc_requirements(user_inputs$power_draw_needed,
+                               user_inputs$daylight_hours + offset_value)
+      }
+    } else {
+      if(varying_variable_name == "n_freezer") {
+        r <- calc_requirements(user_inputs$power_draw_needed + offset_value * FREEZER_P,
+                               user_inputs$daylight_hours)
+      } else if(varying_variable_name == "n_fridge") {
+        r <- calc_requirements(user_inputs$power_draw_needed + offset_value * FRIDGE_P,
+                               user_inputs$daylight_hours)
+      } else {
+        r <- calc_requirements(user_inputs$power_draw_needed,
+                               user_inputs$daylight_hours + offset_value)
+      }
+    }
+    
+    if(!is.finite(r$panels_needed)) {
+      r$panels_needed <- 0
+      r$batteries_needed <- 0
+    }
+    
+    plot_data <- rbind(plot_data, 
+                       data.frame(varying_value = varying_variable + offset_value,
+                                  solar_panels = r$panels_needed,
+                                  batteries = r$batteries_needed))
+  }
+  
+  plot_data_labels <- plot_data %>%
+    group_by(solar_panels, batteries) %>%
+    summarise(varying_value = paste(varying_value, collapse = ", "), .groups = "drop")
+  
+  x_lims <- range(plot_data$solar_panels) + c(-1, 1)
+  y_lims <- range(plot_data$batteries) + c(-1, 1)
+  
+  label <- paste0("Number of solar panels and batteries requied\n")
+
+  if(user_inputs$generic_power) {
+    if(varying_variable_name == "power_draw_needed") {
+      label <- paste0(label, 
+                      "   - holding fixed daylight hours at: ",
+                      user_inputs$daylight_hours)
+    } else {
+      label <- paste0(label, 
+                      "   - holding fixed power draw at: ",
+                      user_inputs$power_draw_needed)
+    }
+  } else {
+    if(varying_variable_name == "n_freezer") {
+      label <- paste0(label, 
+                      "   - holding fixed refrigerators at: ",
+                      user_inputs$n_fridge,
+                      "\n",
+                      "   - holding fixed daylight hours at: ",
+                      user_inputs$daylight_hours)
+    }
+    else if(varying_variable_name == "n_fridge") {
+      label <- paste0(label, 
+                      "   - holding fixed freezers at: ",
+                      user_inputs$n_freezer,
+                      "\n",
+                      "   - holding fixed daylight hours at: ",
+                      user_inputs$daylight_hours)
+    } else {
+      label <- paste0(label, 
+                      "   - holding fixed freezers at: ",
+                      user_inputs$n_freezer,
+                      "\n",
+                      "   - holding fixed refrigerators at: ",
+                      user_inputs$n_fridge)
+    }
+  }
+  
+  # Set this as the middle point, define the no-offset labeling case
+  #target_point <- subset(plot_data_labels, varying_value == varying_variable)
+  #other_points <- subset(plot_data_labels, varying_value != varying_variable)
+
+  # Convert varying_variable (number) to string
+  num_as_text <- as.character(varying_variable)
+  
+  # Subset where varying_value contains the number
+  target_point <- subset(
+    plot_data_labels,
+    grepl(num_as_text, varying_value)
+  )
+  
+  # Subset where varying_value does NOT contain the number
+  other_points <- subset(
+    plot_data_labels,
+    !grepl(num_as_text, varying_value)
+  )
+    
+  print(paste0(target_point, " <--- target point"))
+  print(paste0(other_points, " <--- other points"))
+  
+  ggplot(plot_data, aes(x=solar_panels, y=batteries)) + 
+    geom_point(aes(x=solar_panels, y=batteries), size = 5) +
+    # Text label for the target point in red
+    geom_text_repel(
+      data = target_point,
+      aes(label = paste0(varying_value, unit_defs[varying_variable_name])),
+      color = "red",
+      size = 7,
+      box.padding = 1.0,       # increase padding around label
+      point.padding = 0.8,     # increase space from point
+      max.overlaps = Inf,
+      min.segment.length = Inf
+    ) +
+    # Text labels for all other points in blue
+    geom_text_repel(
+      data = other_points,
+      aes(label = paste0(varying_value, unit_defs[varying_variable_name])),
+      color = "blue",
+      size = 7,
+      box.padding = 1.0,       # increase padding around label
+      point.padding = 0.8,     # increase space from point
+      max.overlaps = Inf,
+      min.segment.length = Inf
+    ) +
+    # Add dashed light red guide lines from target point to axes
+    geom_segment(
+      data = target_point,
+      aes(x = solar_panels, y = y_lims[1], 
+          xend = solar_panels, yend = batteries),
+      linetype = "dashed", color = "red", alpha = 0.5
+    ) +
+    geom_segment(
+      data = target_point,
+      aes(x = x_lims[1], xend = solar_panels, 
+          y = batteries, yend = batteries),
+      linetype = "dashed", color = "red", alpha = 0.5
+    ) +
+        # Add dashed light red guide lines from target point to axes
+    geom_segment(
+      data = other_points,
+      aes(x = solar_panels, y = y_lims[1], 
+          xend = solar_panels, yend = batteries),
+      linetype = "dashed", color = "blue", alpha = 0.5
+    ) +
+    geom_segment(
+      data = other_points,
+      aes(x = x_lims[1], xend = solar_panels, 
+          y = batteries, yend = batteries),
+      linetype = "dashed", color = "blue", alpha = 0.5
+    ) +
+    scale_x_continuous(limits = x_lims, 
+                       breaks = seq(x_lims[1], x_lims[2], 1),
+                       expand = c(0, 0)) +
+    scale_y_continuous(limits = y_lims, 
+                       breaks = seq(y_lims[1], y_lims[2], 1),
+                       expand = c(0, 0)) + 
+    labs(x="Number of solar panels required",
+         y="Number of batteries required",
+         subtitle = label) +
+    theme(panel.border = element_blank(),
+          text = element_text(size = 18),
+          panel.grid.major = element_blank(),   
+          panel.grid.minor = element_blank(),   
+          panel.background = element_blank())
+}
+
+
 output$n_batteries <- renderText({
-  input$total_time
+  n_bat()
 })
 
 output$n_solar_panels <- renderText({
-  input$generic_energy
+  n_panel()
 })
 
 output$r_batt_power <- renderText({
-  paste0(input$n_freezer, " J")
+  paste0(p_leftover(), " J")
+})
+
+output$hold_constant_graph <- renderUI({
+  if(user_inputs$generic_power==TRUE) {
+    navset_tab(
+      nav_panel(
+        "Power",
+        plotOutput("generic_power_needed")
+      ),
+      nav_panel(
+        "Daylight Hours",
+        plotOutput("generic_daylight_hours")
+      )
+    )
+  } else {
+    navset_tab(
+      nav_panel(
+        "Freezers",
+        plotOutput("fandf_freezer")
+      ),
+      nav_panel(
+        "Refrigerators",
+        plotOutput("fandf_fridge")
+      ),
+      nav_panel(
+        "Daylight Hours",
+        plotOutput("fandf_daylight_hours")
+      )
+    )
+  }
+})
+
+output$generic_power_needed <- renderPlot({
+  vary_plot(user_inputs, 
+            user_inputs$power_draw_needed,
+            "power_draw_needed",
+            FALSE,
+            0,
+            TRUE,
+            0,
+            POWER_UNIT_OFFSET)
+})
+
+output$generic_daylight_hours <- renderPlot({
+  vary_plot(user_inputs, 
+            user_inputs$daylight_hours,
+            "daylight_hours",
+            TRUE,
+            24,
+            TRUE,
+            0,
+            DAYLIGHT_UNIT_OFFSET)
+})
+
+output$fandf_freezer <- renderPlot({
+  vary_plot(user_inputs, 
+            user_inputs$n_freezer,
+            "n_freezer",
+            FALSE,
+            0,
+            TRUE,
+            0,
+            FREEZER_UNIT_OFFSET)
+})
+
+output$fandf_fridge <- renderPlot({
+  vary_plot(user_inputs, 
+            user_inputs$n_fridge,
+            "n_fridge",
+            FALSE,
+            0,
+            TRUE,
+            0,
+            FRIDGE_UNIT_OFFSET)
+})
+
+output$fandf_daylight_hours <- renderPlot({
+  vary_plot(user_inputs, 
+            user_inputs$daylight_hours,
+            "daylight_hours",
+            TRUE,
+            24,
+            TRUE,
+            0,
+            DAYLIGHT_UNIT_OFFSET)
+})
+
+output$calc_steps <- renderText({
+  calc_steps_text()
 })
 ```
