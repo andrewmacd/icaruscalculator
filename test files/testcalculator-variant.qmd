@@ -11,6 +11,15 @@ server: shiny
 library(shiny)
 library(ggplot2)
 library(bslib)  
+
+bs_theme_dependencies(bs_theme(preset = "bootstrap")) |>
+  lapply(function(x) {
+    if (x$name == "bootstrap") {
+      x$name <- "bootstrap-from-bslib"
+    }
+    x
+  }) |>
+  htmltools::tagList()
 ```
 
 
@@ -36,6 +45,8 @@ uiOutput("plots_nav")
 ```{r}
 #| context: server
 
+
+
 # --- App state: defaults at startup (A&B with default params) ---
 state <- reactiveVal(list(
   mode = "ab",
@@ -60,14 +71,12 @@ output$plots_nav <- renderUI({
   if (s$mode == "ab") {
     navset_card_tab(
       nav_panel("A", plotOutput("plotA", height = 300)),
-      nav_panel("B", plotOutput("plotB", height = 300))
-    )
+      nav_panel("B", plotOutput("plotB", height = 300)))
   } else {
     navset_card_tab(
       nav_panel("C", plotOutput("plotC", height = 300)),
       nav_panel("D", plotOutput("plotD", height = 300)),
-      nav_panel("E", plotOutput("plotE", height = 300))
-    )
+      nav_panel("E", plotOutput("plotE", height = 300)))
   }
 })
 

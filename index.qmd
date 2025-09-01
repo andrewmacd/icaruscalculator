@@ -4,7 +4,6 @@ format:
   dashboard:
     logo: images/icarus.png
     nav-buttons: [github]
-    theme: litera
 server: shiny
 ---
 
@@ -22,6 +21,18 @@ library(ggrepel)
 
 options("scipen"=10) 
 theme_set(theme_minimal())
+
+# Some hacky BS because bslib and Quarto try to load conflicting versions 
+# of boostrap. 
+# See: https://github.com/rstudio/bslib/issues/834#issuecomment-1766591997
+bs_theme_dependencies(bs_theme(preset = "bootstrap")) |>
+  lapply(function(x) {
+    if (x$name == "bootstrap") {
+      x$name <- "bootstrap-from-bslib"
+    }
+    x
+  }) |>
+  htmltools::tagList()
 
 # --------------------- UI defaults   ----------------
 
@@ -187,7 +198,7 @@ construct_calc_step_text <- function(user_inputs, calc_outputs, is_generic_energ
 }
 ```
 
-# Solar Panels & Batteries Needed
+
 
 ##  {.sidebar}
 
@@ -240,10 +251,7 @@ br()
 actionButton("calc_button", "Calculate")
 ```
 
-
 ## Column
-
-### Row {height="15%"}
 
 ```{r}
 value_box(
@@ -274,9 +282,7 @@ value_box(
 )
 ```
 
-### Row {height="55%"}
-
-#### Column {width="75%"}
+## Column 
 
 ```{r}
 #| title: "Change in requirements by variable"
@@ -284,7 +290,6 @@ value_box(
 uiOutput("hold_constant_graph")
 ```
 
-####
 
 ```{r}
 card(
@@ -292,9 +297,7 @@ card(
 )
 ```
 
-
-### Row
-
+## Column
 
 ```{r}
 #| title: "Calculation steps"
@@ -302,10 +305,6 @@ card(
 verbatimTextOutput("calc_steps")
 ```
 
-
-# Combat
-
-Coming soon...
 
 ```{r}
 #| label: reactivecode
